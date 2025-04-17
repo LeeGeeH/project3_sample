@@ -1,6 +1,3 @@
-# navigation_core.py
-# 핵심 내비게이션 로직 및 Pure Pursuit 알고리즘 처리
-
 import math
 import random
 import numpy as np
@@ -8,7 +5,8 @@ from position_handler import PositionHandler
 from controller import PIController
 from config import (
     MOVE_STEP, TOLERANCE, LOOKAHEAD_MIN, LOOKAHEAD_MAX,
-    GOAL_WEIGHT, WEIGHT_FACTORS, SPEED_FACTOR, STEERING_SMOOTHING
+    GOAL_WEIGHT, WEIGHT_FACTORS, SPEED_FACTOR, STEERING_SMOOTHING,
+    OBSTACLE_RADIUS, CONTROL_PARAMS
 )
 
 class Navigation:
@@ -19,47 +17,10 @@ class Navigation:
         self.initial_distance = None
         self.last_command = None
         self.last_steering = 0.0
-        # 초기화 정보 추가
-        self.start_mode = "start"  # 기본값: 시뮬레이션 시작
-        self.blue_tank_position = None  # 아군 전차 위치 (x, y, z)
-        self.red_tank_position = None  # 적 전차 위치 (x, y, z)
-
-    def init_simulation(self):
-        """시뮬레이션 초기화 정보를 설정하고 반환."""
-        # 기본 초기화 값 (config.py에서 가져오거나 하드코딩)
-        default_init = {
-            "startMode": self.start_mode,
-            "blStartX": 100.0,
-            "blStartY": 100.0,
-            "blStartZ": 100.23,
-            "rdStartX": 59.0,
-            "rdStartY": 10.0,
-            "rdStartZ": 280.0
-        }
-
-        # 아군 전차 위치 설정
-        self.blue_tank_position = (
-            default_init["blStartX"],
-            default_init["blStartY"],
-            default_init["blStartZ"]
-        )
-        # 아군 전차의 초기 위치를 position_handler에 설정
-        self.position_handler.current_position = (
-            default_init["blStartX"],
-            default_init["blStartZ"]
-        )
-
-        # 적 전차 위치 설정
-        self.red_tank_position = (
-            default_init["rdStartX"],
-            default_init["rdStartY"],
-            default_init["rdStartZ"]
-        )
-
-        # startMode에 따라 동작 설정 (예: pause일 경우 이동 중지)
-        self.start_mode = default_init["startMode"]
-
-        return default_init
+        self.start_mode = "start"
+        self.blue_tank_position = None
+        self.red_tank_position = None
+        self.obstacles = []
 
     def set_destination(self, destination_str):
         """목적지를 설정하고 초기 거리를 계산."""
@@ -80,9 +41,36 @@ class Navigation:
         except Exception as e:
             return {"status": "ERROR", "message": str(e)}
 
+    def add_obstacle(self, x, z):
+        """장애물 추가."""
+        try:
+            x, z = float(x), float(z)
+            self.obstacles.append((x, z))
+            return {"status": "OK", "message": f"Obstacle added at ({x}, {z})"}
+        except ValueError:
+            return {"status": "ERROR", "message": "Invalid obstacle coordinates"}
+
+    def update_obstacle(self, obstacle_data):
+        """Flask 라우트에서 호출되는 장애물 업데이트 메서드."""
+        try:
+            x = obstacle_data.get("x")
+            z = obstacle_data.get("z")
+            if x is None or z is None:
+                return {"status": "ERROR", "message": "Missing x or z coordinates"}
+            return self.add_obstacle(x, z)
+        except Exception as e:
+            return {"status": "ERROR", "message": str(e)}
+
+    def is_obstacle_in_path(self, curr_x, curr_z, target_x, target_z):
+        """장애물이 경로에 있는지 확인 (선-원 충돌 검사)."""
+        for obs_x, obs_z in self.obstacles:
+            dist_to_line = abs((target_z - curr_z) * obs_x - (target_x - curr_x) * obs_z + target_x * curr_z - target_z * curr_x) / math.sqrt((target_z - curr_z) ** 2 + (target_x - curr_x) ** 2)
+            if dist_to_line < OBSTACLE_RADIUS:
+                return True
+        return False
+
     def get_move(self):
         """Pure Pursuit 알고리즘과 P/I 제어를 사용하여 이동 명령 계산."""
-        # startMode가 pause일 경우 이동 중지
         if self.start_mode == "pause":
             return {"move": "STOP", "weight": 1.0}
 
@@ -98,7 +86,6 @@ class Navigation:
             self.controller.reset_integral()
             return {"move": "STOP", "weight": 1.0}
 
-        # Pure Pursuit 알고리즘
         lookahead_distance = min(LOOKAHEAD_MAX, max(LOOKAHEAD_MIN, distance * 0.5))
         goal_vector = np.array([dest_x - curr_x, dest_z - curr_z])
         goal_distance = np.linalg.norm(goal_vector)
@@ -117,6 +104,10 @@ class Navigation:
 
         lookahead_x = curr_x + target_vector[0] * lookahead_distance
         lookahead_z = curr_z + target_vector[1] * lookahead_distance
+
+        if self.is_obstacle_in_path(curr_x, curr_z, lookahead_x, lookahead_z):
+            return {"move": "STOP", "weight": 1.0, "message": "Obstacle detected in path"}
+
         dx = lookahead_x - curr_x
         dz = lookahead_z - curr_z
         target_heading = math.atan2(dx, dz)
@@ -128,12 +119,13 @@ class Navigation:
         steering = STEERING_SMOOTHING * self.last_steering + (1 - STEERING_SMOOTHING) * curvature
         self.last_steering = steering
 
-        # P/I 제어로 속도 계산
         speed_ms = self.controller.compute_speed(self.position_handler.current_speed_kh)
 
-        # 조향에 따른 속도 감소
         abs_steering = abs(steering)
         speed_ms = speed_ms * (1.0 - abs_steering * SPEED_FACTOR)
+
+        # 최대 속도 제한 (target_val_kh 기준)
+        speed_ms = min(speed_ms, CONTROL_PARAMS["target_val_kh"] / 3.6)
 
         progress = max(0, 1 - distance / self.initial_distance) if self.initial_distance and distance > 0 else 0.0
 

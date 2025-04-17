@@ -1,6 +1,3 @@
-# position_handler.py
-# 위치 및 방향 업데이트 처리
-
 import math
 import time
 from config import HEADING_SMOOTHING, CONTROL_PARAMS
@@ -17,7 +14,8 @@ class PositionHandler:
         """새 위치 데이터를 기반으로 현재 위치, 방향, 속도를 업데이트."""
         try:
             now = time.time()
-            dt = now - self.last_update_time
+            dt = now - self.last_update_time if now > self.last_update_time else 0.01
+            dt = max(dt, 0.01)  # dt 최소값 설정 (안정성 확보)
             self.last_update_time = now
 
             x, y, z = map(float, position_str.split(","))
@@ -40,12 +38,17 @@ class PositionHandler:
                     )
                     # 속도 계산 (km/h) 및 평활화
                     if dt > 0:
+                        # 이동 거리 제한 (최대 target_val_kh에 해당하는 거리)
+                        max_distance = (CONTROL_PARAMS["target_val_kh"] / 3.6) * dt
+                        distance_moved = min(distance_moved, max_distance)
                         raw_speed_kh = (distance_moved / dt) * 3.6
+                        raw_speed_kh = min(raw_speed_kh, CONTROL_PARAMS["target_val_kh"])
                         smoothing = CONTROL_PARAMS["speed_smoothing"]
                         self.smoothed_speed_kh = (
                             smoothing * self.smoothed_speed_kh + 
                             (1 - smoothing) * raw_speed_kh
                         )
+                        self.smoothed_speed_kh = min(self.smoothed_speed_kh, CONTROL_PARAMS["target_val_kh"])
                         self.current_speed_kh = self.smoothed_speed_kh
 
             self.current_position = new_position

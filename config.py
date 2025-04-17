@@ -21,11 +21,11 @@ WEIGHT_FACTORS = {
 
 # P제어 및 I제어 파라미터
 CONTROL_PARAMS = {
-    "target_val_kh": 30.0,      # 목표 속도 (km/h)
+    "target_val_kh": 30.0,      # 최대 목표 속도 (km/h, 모든 로직의 속도 상한)
     "kp_val": 0.18,             # 비례 게인 (P 제어)
-    "ki_val": 0.0,             # 적분 게인 (I 제어)
-    "speed_smoothing": 0.9,     # 속도 평활화 계수 (0~1)
-    "integral_limit": 100.0     # 적분항 상한 (Wind-up 방지, 단위: 임의)
+    "ki_val": 0.1,              # 적분 게인 (I 제어)
+    "speed_smoothing": 0.7,     # 속도 평활화 계수 (0~1, 반응성 향상)
+    "integral_limit": 10.0      # 적분항 상한 (Wind-up 방지, 안정성 강화)
 }
 
 # 장애물 감지 및 회피 관련 설정

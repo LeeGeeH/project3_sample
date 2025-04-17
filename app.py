@@ -2,7 +2,7 @@
 # Flask 애플리케이션으로 HTTP 요청 처리
 
 from flask import Flask, request, jsonify
-from canayama_algorithm import Navigation
+from navigation_core import Navigation
 
 app = Flask(__name__)
 navigator = Navigation()
@@ -38,10 +38,9 @@ def set_destination():
 def get_move():
     return jsonify(navigator.get_move())
 
-# 장애물 업데이트 엔드포인트 (미구현)
-"""
-@app.route('/update_opstacle', methods=['POST'])
-def update_opstacle():
+@app.route('/update_obstacle', methods=['POST'])
+def update_obstacle():
+    """장애물 데이터를 받아 Navigation 클래스에 반영."""
     data = request.get_json()
     if not data or "obstacle" not in data:
         return jsonify({"status": "ERROR", "message": "장애물 데이터 누락"}), 400
@@ -49,8 +48,7 @@ def update_opstacle():
     result = navigator.update_obstacle(data["obstacle"])
     if result["status"] == "ERROR":
         return jsonify(result), 400
-    return jsonify(result)
-"""
+    return jsonify(result), 200
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5002)

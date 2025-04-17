@@ -20,10 +20,10 @@ class Navigation:
         self.initial_distance = None
         self.last_command = None
         self.last_steering = 0.0
-        self.start_mode = "start"
-        self.blue_tank_position = None
-        self.red_tank_position = None
-        self.obstacles = []  # 장애물 리스트
+        self.start_mode = "start"  # 기본값: 시뮬레이션 시작
+        self.blue_tank_position = None  # 아군 전차 위치 (x, y, z)
+        self.red_tank_position = None  # 적 전차 위치 (x, y, z)
+        self.obstacles = []  # 장애물 리스트 초기화
 
     def set_destination(self, destination_str):
         """목적지를 설정하고 초기 거리를 계산."""
